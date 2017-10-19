@@ -640,13 +640,6 @@ int main(int argc, char *argv[])
 
     // impl
 
-    // check if label exists
-    if (smap.find(m[2]) == smap.end())
-    {
-      print_error(line_num, input, "label does not exist");
-      return 1;
-    }
-
     if (flg.cmp == 0)
     {
       flg.jmp.lbl = m[2];
@@ -672,13 +665,6 @@ int main(int argc, char *argv[])
     }
 
     // impl
-
-    // check if label exists
-    if (smap.find(m[2]) == smap.end())
-    {
-      print_error(line_num, input, "label does not exist");
-      return 1;
-    }
 
     if (flg.cmp != 0)
     {
@@ -706,13 +692,6 @@ int main(int argc, char *argv[])
 
     // impl
 
-    // check if label exists
-    if (smap.find(m[2]) == smap.end())
-    {
-      print_error(line_num, input, "label does not exist");
-      return 1;
-    }
-
     if (flg.cmp < 0)
     {
       flg.jmp.lbl = m[2];
@@ -739,13 +718,6 @@ int main(int argc, char *argv[])
 
     // impl
 
-    // check if label exists
-    if (smap.find(m[2]) == smap.end())
-    {
-      print_error(line_num, input, "label does not exist");
-      return 1;
-    }
-
     if (flg.cmp > 0)
     {
       flg.jmp.lbl = m[2];
@@ -771,13 +743,6 @@ int main(int argc, char *argv[])
     }
 
     // impl
-
-    // check if label exists
-    if (smap.find(m[2]) == smap.end())
-    {
-      print_error(line_num, input, "label does not exist");
-      return 1;
-    }
 
     flg.jmp.lbl = m[2];
     flg.jmp.now = true;
