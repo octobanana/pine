@@ -16,6 +16,7 @@ namespace Term = OB::Termsize;
 using namespace fmt::literals;
 
 #include <stack>
+#include <limits>
 #include <regex>
 #include <map>
 #include <functional>
@@ -93,11 +94,34 @@ class regex_orderable : public std::regex
     std::string str;
 };
 
+struct Debug
+{
+  bool all {false};
+  // TODO add flags for showing just some vars
+};
+
+struct Jump
+{
+  bool now {false};
+  std::string lbl;
+};
+
+struct Flags
+{
+  Jump jmp;
+  Debug dbg;
+  int cmp {0};
+};
+
+struct Label
+{
+  int line {0};
+};
+
 struct Instruction
 {
-  std::string name;
   std::string value;
-  // std::string type;
+  std::string type;
 };
 
 int main(int argc, char *argv[])
@@ -110,9 +134,8 @@ int main(int argc, char *argv[])
 
   // debug
   fmt::print("{}\n", cl::wrap(String::repeat("-", Term::width()), {cl::fg_magenta}));
-
-  // debug
   fmt::print("file: {}\n", pg.get("file"));
+  fmt::print("{}\n", cl::wrap(String::repeat("-", Term::width()), {cl::fg_magenta}));
 
   if (! pg.find("file"))
   {
@@ -129,196 +152,747 @@ int main(int argc, char *argv[])
     return 1;
   }
 
+  Flags flg;
+  std::stack<std::string> stk; // TODO should this be a vector
   std::vector<std::string> reg;
-  std::stack<std::string> stk;
+  std::map<std::string, Label> lbl;
   std::map<std::string, Instruction> smap;
 
-  auto const ins_mov = [&smap](int line_num, std::string input, std::smatch m)
+  auto const print_error = [](int line_num, std::string input, std::string msg)
+  {
+    fmt::print("Error: {}\n  [{}]: {}\n", msg, line_num, input);
+  };
+
+  auto const dbg_ins_name = [](std::string name)
+  {
+    fmt::print("\n{}\n", String::to_upper(name));
+  };
+
+  auto const ins_mov = [&](int line_num, std::string input, std::smatch m)
   {
     // debug
-    fmt::print("\nMOV\n");
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
 
+    // error
     if (m.size() != 4)
     {
-      // error
-      fmt::print("Error: {}\n  [{}]: {}\n", "invalid/missing arguments", line_num, input);
+      print_error(line_num, input, "invalid/missing arguments");
       return 1;
     }
 
-    smap[m[2]].name = m[2];
+    // impl
 
-    std::string const v {m[3]};
+    std::string const key {m[2]};
+    std::string const val {m[3]};
 
-    bool v_int = (v.find_first_not_of("0123456789") == std::string::npos);
-
-    if (v_int)
+    // determine type
+    if (val.at(0) == '\'' && val.at(val.size() - 1) == '\'')
     {
-      // debug
-      fmt::print("type: {}\n", "int");
-
-      smap[m[2]].value = v;
-      // smap[m[2]].type = "int";
+      // string
+      smap[key].value = val.substr(1, val.size() - 2);
+      smap[key].type = "str";
+    }
+    else if (val.at(val.size() - 1) == '\'')
+    {
+      // double
+      smap[key].value = val.substr(0, val.size() - 2);
+      smap[key].type = "dbl";
     }
     else
     {
-      // debug
-      fmt::print("type: {}\n", "str");
-
-      smap[m[2]].value = v.substr(1, v.size() - 2);
-      // smap[m[2]].type = "string";
+      smap[key].value = val;
+      smap[key].type = "int";
     }
 
     return 0;
   };
 
-  auto const ins_add = [&smap, &stk](int line_num, std::string input, std::smatch m)
+  auto const ins_add = [&](int line_num, std::string input, std::smatch m)
   {
     // debug
-    fmt::print("\nADD\n");
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
 
+    // error
     if (m.size() != 4)
     {
-      // error
-      fmt::print("Error: {}\n  [{}]: {}\n", "invalid/missing arguments", line_num, input);
+      print_error(line_num, input, "invalid/missing arguments");
       return 1;
     }
 
-    auto v1 = smap[m[2]];
-    auto v2 = smap[m[3]];
+    // impl
 
-    bool v1_int = (v1.value.find_first_not_of("0123456789") == std::string::npos);
-    bool v2_int = (v2.value.find_first_not_of("0123456789") == std::string::npos);
-
-    if (v1_int && v2_int)
+    // check if keys exist
+    if (smap.find(m[2]) == smap.end() || smap.find(m[3]) == smap.end())
     {
-      // debug
-      fmt::print("type: {}\n", "int");
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
 
-      int res = std::stoi(v1.value) + std::stoi(v2.value);
-      stk.emplace(std::to_string(res));
-      fmt::print("result: {}\n", stk.top());
+    auto& v1 = smap[m[2]];
+    auto& v2 = smap[m[3]];
+
+    // determine type
+    if (v1.type == "int" && v2.type == "int")
+    {
+      // int
+      v1.value = std::to_string(std::stoi(v1.value) + std::stoi(v2.value));
+    }
+    else if (v1.type == "dbl" && v2.type == "dbl")
+    {
+      // double
+      v1.value = std::to_string(std::stod(v1.value) + std::stod(v2.value));
     }
     else
     {
-      // debug
-      fmt::print("type: {}\n", "str");
-
-      stk.emplace(v1.value + v2.value);
-      fmt::print("result: {}\n", stk.top());
+      // string
+      v1.value = v1.value + v2.value;
     }
 
     return 0;
   };
 
-  auto const ins_sub = [&smap, &stk](int line_num, std::string input, std::smatch m)
+  auto const ins_sub = [&](int line_num, std::string input, std::smatch m)
   {
     // debug
-    fmt::print("\nSUB\n");
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
 
+    // error
     if (m.size() != 4)
     {
-      // error
-      fmt::print("Error: {}\n  [{}]: {}\n", "invalid/missing arguments", line_num, input);
+      print_error(line_num, input, "invalid/missing arguments");
       return 1;
     }
 
-    auto v1 = smap[m[2]];
-    auto v2 = smap[m[3]];
+    // impl
 
-    bool v1_int = (v1.value.find_first_not_of("0123456789") == std::string::npos);
-    bool v2_int = (v2.value.find_first_not_of("0123456789") == std::string::npos);
-
-    if (v1_int && v2_int)
+    // check if keys exist
+    if (smap.find(m[2]) == smap.end() || smap.find(m[3]) == smap.end())
     {
-      // debug
-      fmt::print("type: {}\n", "int");
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
 
-      int res = std::stoi(v1.value) - std::stoi(v2.value);
-      stk.emplace(std::to_string(res));
-      fmt::print("result: {}\n", stk.top());
+    auto& v1 = smap[m[2]];
+    auto& v2 = smap[m[3]];
+
+    // determine type
+    if (v1.type == "int" && v2.type == "int")
+    {
+      // int
+      v1.value = std::to_string(std::stoi(v1.value) - std::stoi(v2.value));
+    }
+    else if (v1.type == "dbl" && v2.type == "dbl")
+    {
+      // double
+      v1.value = std::to_string(std::stod(v1.value) - std::stod(v2.value));
     }
     else
     {
-      fmt::print("Error: {}\n  [{}]: {}\n", "invalid/missing arguments", line_num, input);
+      // error
+      print_error(line_num, input, "can't apply subtraction on strings");
       return 1;
     }
 
     return 0;
   };
 
-  auto const ins_pop = [&smap, &stk](int line_num, std::string input, std::smatch m)
+  auto const ins_clear = [&](int line_num, std::string input, std::smatch m)
   {
     // debug
-    fmt::print("\nPOP\n");
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
 
+    // error
     if (m.size() != 3)
     {
-      // error
-      fmt::print("Error: {}\n  [{}]: {}\n", "invalid/missing arguments", line_num, input);
+      print_error(line_num, input, "invalid/missing arguments");
       return 1;
     }
 
+    // impl
+
+    // check if key exists
+    auto it = smap.find(m[2]);
+    if (it == smap.end())
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    smap.erase(it);
+
+    return 0;
+  };
+
+  auto const ins_pop = [&](int line_num, std::string input, std::smatch m)
+  {
+    // debug
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
+
+    // error
+    if (m.size() != 3)
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    // check if key exist
+    if (smap.find(m[2]) == smap.end())
+    {
+      print_error(line_num, input, "key does not exist");
+      return 1;
+    }
+
+    // check if stack is empty
+    if (stk.empty())
+    {
+      // error
+      fmt::print("Error: {}\n  [{}]: {}\n", "the stack is empty", line_num, input);
+      return 1;
+    }
+
+    // pop value off stack into map
     smap[m[2]].value = stk.top();
     stk.pop();
 
     return 0;
   };
 
-  auto const ins_print = [&smap, &stk](int line_num, std::string input, std::smatch m)
+  auto const ins_push = [&](int line_num, std::string input, std::smatch m)
   {
     // debug
-    fmt::print("\nPRINT\n");
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
 
+    // error
     if (m.size() != 3)
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    // check if key exist
+    if (smap.find(m[2]) == smap.end())
+    {
+      print_error(line_num, input, "key does not exist");
+      return 1;
+    }
+
+    // push value onto stack
+    stk.emplace(m[2]);
+
+    return 0;
+  };
+
+  auto const ins_print = [&](int line_num, std::string input, std::smatch m)
+  {
+    // debug
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
+
+    // error
+    if (m.size() != 3)
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    // check if key exist
+    if (smap.find(m[2]) == smap.end())
+    {
+      print_error(line_num, input, "key does not exist");
+      return 1;
+    }
+
+    // stdout
+    fmt::print("{}\n", smap[m[2]].value);
+
+    return 0;
+  };
+
+  auto const ins_ask = [&](int line_num, std::string input, std::smatch m)
+  {
+    // debug
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
+
+    // error
+    if (m.size() != 3)
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    // check if key exist
+    if (smap.find(m[2]) == smap.end())
+    {
+      print_error(line_num, input, "key does not exist");
+      return 1;
+    }
+
+    // stdin
+    std::string v;
+    std::cout << "> " << std::flush;
+    std::getline(std::cin, v);
+    smap[m[2]].value = v;
+
+    return 0;
+  };
+
+  auto const ins_debug = [&](int line_num, std::string input, std::smatch m)
+  {
+    // debug
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
+
+    // error
+    if (m.size() != 3)
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    // check flag value
+    std::string const flag = m[2];
+    if (flag == "all")
+    {
+      flg.dbg.all = true;
+    }
+    else if (flag == "off")
+    {
+      flg.dbg.all = false;
+    }
+    else
     {
       // error
       fmt::print("Error: {}\n  [{}]: {}\n", "invalid/missing arguments", line_num, input);
       return 1;
     }
 
-    fmt::print("stdout: {}\n", smap[m[2]].value);
+    return 0;
+  };
+
+  auto const ins_label = [&](int line_num, std::string input, std::smatch m)
+  {
+    // debug
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
+
+    // error
+    if (m.size() != 3)
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    std::string const label = m[2];
+
+    // check if key exist
+    if (smap.find(label) == smap.end())
+    {
+      // label is new
+      lbl[label].line = line_num;
+    }
+    else
+    {
+      // label has been seen before
+      if (lbl[label].line != line_num)
+      {
+        // error
+        print_error(line_num, input, "invalid/missing arguments");
+        return 1;
+      }
+    }
+
+    return 0;
+  };
+
+  auto const ins_compare = [&](int line_num, std::string input, std::smatch m)
+  {
+    // debug
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
+
+    // error
+    if (m.size() != 4)
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    auto& v1 = smap[m[2]];
+    auto& v2 = smap[m[3]];
+
+    // compare key values
+    if (v1.value > v2.value)
+    {
+      // greater then
+      flg.cmp = 1;
+    }
+    else if (v1.value < v2.value)
+    {
+      // less then
+      flg.cmp = -1;
+    }
+    else
+    {
+      // equal
+      flg.cmp = 0;
+    }
+
+    return 0;
+  };
+
+  auto const ins_exit = [&](int line_num, std::string input, std::smatch m)
+  {
+    // debug
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
+
+    // error
+    if (m.size() != 3)
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    // check if key exists
+    if (smap.find(m[2]) == smap.end())
+    {
+      print_error(line_num, input, "key does not exist");
+      return 1;
+    }
+
+    auto& v = smap[m[2]];
+
+    if (v.type != "int")
+    {
+      // error
+      fmt::print("Error: {}\n  [{}]: {}\n", "invalid/missing arguments", line_num, input);
+      return 1;
+    }
+
+    // exit program
+    // TODO return exit code -1 and handle exit after main loop
+    exit(std::stoi(v.value));
+
+    return 0;
+  };
+
+  auto const ins_jump_equal = [&](int line_num, std::string input, std::smatch m)
+  {
+    // debug
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
+
+    // error
+    if (m.size() != 3)
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    // check if label exists
+    if (smap.find(m[2]) == smap.end())
+    {
+      print_error(line_num, input, "label does not exist");
+      return 1;
+    }
+
+    if (flg.cmp == 0)
+    {
+      flg.jmp.lbl = m[2];
+      flg.jmp.now = true;
+    }
+
+    return 0;
+  };
+
+  auto const ins_jump_not_equal = [&](int line_num, std::string input, std::smatch m)
+  {
+    // debug
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
+
+    // error
+    if (m.size() != 3)
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    // check if label exists
+    if (smap.find(m[2]) == smap.end())
+    {
+      print_error(line_num, input, "label does not exist");
+      return 1;
+    }
+
+    if (flg.cmp != 0)
+    {
+      flg.jmp.lbl = m[2];
+      flg.jmp.now = true;
+    }
+
+    return 0;
+  };
+
+  auto const ins_jump_less_then = [&](int line_num, std::string input, std::smatch m)
+  {
+    // debug
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
+
+    // error
+    if (m.size() != 3)
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    // check if label exists
+    if (smap.find(m[2]) == smap.end())
+    {
+      print_error(line_num, input, "label does not exist");
+      return 1;
+    }
+
+    if (flg.cmp < 0)
+    {
+      flg.jmp.lbl = m[2];
+      flg.jmp.now = true;
+    }
+
+    return 0;
+  };
+
+  auto const ins_jump_greater_then = [&](int line_num, std::string input, std::smatch m)
+  {
+    // debug
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
+
+    // error
+    if (m.size() != 3)
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    // check if label exists
+    if (smap.find(m[2]) == smap.end())
+    {
+      print_error(line_num, input, "label does not exist");
+      return 1;
+    }
+
+    if (flg.cmp > 0)
+    {
+      flg.jmp.lbl = m[2];
+      flg.jmp.now = true;
+    }
+
+    return 0;
+  };
+
+  auto const ins_jump = [&](int line_num, std::string input, std::smatch m)
+  {
+    // debug
+    if (flg.dbg.all)
+    {
+      dbg_ins_name(m[1]);
+    }
+
+    // error
+    if (m.size() != 3)
+    {
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    // check if label exists
+    if (smap.find(m[2]) == smap.end())
+    {
+      print_error(line_num, input, "label does not exist");
+      return 1;
+    }
+
+    flg.jmp.lbl = m[2];
+    flg.jmp.now = true;
 
     return 0;
   };
 
   std::map<regex_orderable, std::function<int(int, std::string, std::smatch)>> imap {
     {"^(mov)\\s([0-9a-zA-z]+)\\s([\"',.?! 0-9a-zA-Z]+)$", ins_mov},
+    {"^(clr)\\s([0-9a-zA-z]+)$", ins_clear},
+
     {"^(add)\\s([0-9a-zA-z]+)\\s([0-9a-zA-Z]+)$", ins_add},
     {"^(sub)\\s([0-9a-zA-z]+)\\s([0-9a-zA-Z]+)$", ins_sub},
+
+    {"^(lbl)\\s([0-9a-zA-z]+)$", ins_label},
+    {"^(cmp)\\s([0-9a-zA-z]+)\\s([0-9a-zA-Z]+)$", ins_compare},
+    {"^(jmp)\\s([0-9a-zA-z]+)$", ins_jump},
+    {"^(jeq)\\s([0-9a-zA-z]+)$", ins_jump_equal},
+    {"^(jne)\\s([0-9a-zA-z]+)$", ins_jump_not_equal},
+    {"^(jlt)\\s([0-9a-zA-z]+)$", ins_jump_less_then},
+    {"^(jgt)\\s([0-9a-zA-z]+)$", ins_jump_greater_then},
+
     {"^(pop)\\s([0-9a-zA-z]+)$", ins_pop},
-    {"^(print)\\s([0-9a-zA-z]+)$", ins_print},
+    {"^(psh)\\s([0-9a-zA-z]+)$", ins_push},
+
+    {"^(prt)\\s([0-9a-zA-z]+)$", ins_print},
+    {"^(ask)\\s([0-9a-zA-z]+)$", ins_ask},
+
+    {"^(dbg)\\s([a-z]+)$", ins_debug},
+
+    {"^(ext)\\s([0-9a-zA-Z]+)$", ins_exit},
   };
 
   int line_num {0};
+  std::vector<uint64_t> line_bytes;
   std::string input;
   while(std::getline(ifile, input))
   {
+    // inc line number
     ++line_num;
 
-    // debug
-    fmt::print("\n{}: {}\n", line_num, input);
-    fmt::print("map:\n");
-    for (auto const& e : smap)
+    // note fstream byte total
+    line_bytes.emplace_back(ifile.tellg());
+
+    // handle jumps
+    if (flg.jmp.now)
     {
-      fmt::print("  {} -> {}\n", e.first, e.second.value);
+      // debug
+      if (flg.dbg.all)
+      {
+        fmt::print("jump: {}\n", flg.jmp.lbl);
+      }
+
+      // check if label exists
+      auto it = lbl.find(flg.jmp.lbl);
+      if (it != lbl.end())
+      {
+        // seen label before
+        ifile.seekg(line_bytes.at(it->second.line - 1));
+        line_num = it->second.line;
+        flg.jmp.now = false;
+
+        // debug
+        if (flg.dbg.all)
+        {
+          fmt::print("jump found: {}\n", flg.jmp.lbl);
+        }
+
+        // continue if found before
+        continue;
+      }
+      else
+      {
+        // label hasn't been seen yet
+        // debug
+        if (flg.dbg.all)
+        {
+          fmt::print("finding label: {}\n", flg.jmp.lbl);
+        }
+      }
     }
 
+    // debug
+    if (flg.dbg.all)
+    {
+      fmt::print("\n{}\n", cl::wrap(String::repeat("-", Term::width()), {cl::fg_green}));
+      fmt::print("{}: {}\n", line_num, input);
+      fmt::print("{}\n", cl::wrap(String::repeat("-", Term::width()), {cl::fg_green}));
+    }
+
+    // handle empty line
     if (input.empty())
     {
       // debug
-      fmt::print("empty: [{}]: {}\n", line_num, input);
+      if (flg.dbg.all)
+      {
+        fmt::print("empty: [{}]: {}\n", line_num, input);
+      }
 
       continue;
     }
 
+    // handle comment
     if (input.at(0) == '#')
     {
       // debug
-      fmt::print("comment: [{}]: {}\n", line_num, input);
+      if (flg.dbg.all)
+      {
+        fmt::print("comment: [{}]: {}\n", line_num, input);
+      }
 
       continue;
     }
 
+    // handle instruction
     bool valid {false};
     std::smatch match;
     for (auto& e : imap)
@@ -326,35 +900,122 @@ int main(int argc, char *argv[])
       if (std::regex_match(input, match, e.first))
       {
         // debug
-        fmt::print("regex:\n");
-        for (auto const& e : match)
+        if (flg.dbg.all)
         {
-          std::string s {e};
-          fmt::print("  val: {}\n", s);
+          fmt::print("regex:\n");
+          for (auto i = 0; i < match.size(); ++i)
+          {
+            std::string const s {match[i]};
+            fmt::print("  [{}]: {}\n", i, s);
+          }
         }
 
         // debug
-        fmt::print("match: [{}]: {}\n", line_num, input);
-        fmt::print("ins: {}\n", std::string(match[1]));
+        if (flg.dbg.all)
+        {
+          fmt::print("match: [{}]: {}\n", line_num, input);
+          fmt::print("ins: {}\n", std::string(match[1]));
+        }
 
-        auto& ifunc = e.second;
-        ifunc(line_num, input, match);
-        valid = true;
+        // handle jumps
+        if (flg.jmp.now)
+        {
+          // debug
+          if (flg.dbg.all)
+          {
+            fmt::print("jump search: {}\n", flg.jmp.lbl);
+          }
+          if ("lbl" == match[1])
+          {
+            // debug
+            if (flg.dbg.all)
+            {
+              fmt::print("jump found label\n");
+            }
+            auto& ifunc = e.second;
+            int status = ifunc(line_num, input, match);
+            if (status == 0)
+            {
+              valid = true;
+              if (flg.jmp.lbl == match[2])
+              {
+                flg.jmp.now = false;
+
+                // debug
+                if (flg.dbg.all)
+                {
+                  fmt::print("jump found: {}\n", flg.jmp.lbl);
+                }
+              }
+            }
+            else
+            {
+              valid = false;
+            }
+            break;
+          }
+          else
+          {
+            valid = true;
+            break;
+          }
+        }
+        else
+        {
+          auto& ifunc = e.second;
+          int status = ifunc(line_num, input, match);
+          if (status == 0)
+          {
+            valid = true;
+          }
+          else
+          {
+            valid = false;
+          }
+          break;
+        }
       }
     }
 
+    // handle invalid instruction
     if (! valid)
     {
+      // TODO should invalid ins break the program
       // error
       fmt::print("Error: {}\n  [{}]: {}\n", "invalid instruction", line_num, input);
       return 1;
     }
 
-    fmt::print("map:\n");
-    for (auto const& e : smap)
+    // print out debug info
+    // debug
+    if (flg.dbg.all)
     {
-      fmt::print("  {} -> {}\n", e.first, e.second.value);
+      fmt::print("map:\n");
+      for (auto const& e : smap)
+      {
+        fmt::print("  {} -> {}\n", e.first, e.second.value);
+      }
+      fmt::print("labels:\n");
+      for (auto const& e : lbl)
+      {
+        fmt::print("  {} -> {}\n", e.first, e.second.line);
+      }
+      fmt::print("stack:\n");
+      auto stk_copy = stk;
+      while (stk_copy.size() > 0)
+      {
+        fmt::print("  {}\n", stk_copy.top());
+        stk_copy.pop();
+      }
+      fmt::print("flags:\n");
+      fmt::print("  cmp -> {}\n", flg.cmp);
+      fmt::print("  dbg:\n");
+      fmt::print("    all -> {}\n", flg.dbg.all);
+      fmt::print("  jmp:\n");
+      fmt::print("    now -> {}\n", flg.jmp.now);
+      fmt::print("    lbl -> {}\n", flg.jmp.lbl);
     }
+
   }
   ifile.close();
 
