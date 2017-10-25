@@ -51,6 +51,7 @@ int program_options(Parg& pg)
   pg.set("version,v", "print the program version");
   pg.set("color,c", "print the output in color");
   pg.set("file,f", "", "file to read from");
+  pg.set("interpreter,i", "start interpreter");
 
   pg.set_pos();
   pg.set_stdin();
@@ -106,6 +107,7 @@ class regex_orderable : public std::regex
 struct Debug
 {
   bool all {false};
+  bool cmt {false};
   bool map {false};
   bool stk {false};
   bool lbl {false};
@@ -153,12 +155,16 @@ int main(int argc, char *argv[])
   OB::Log(OB::Log::INFO, LOG_MAIN) << "Starting Program";
 
   Parg pg {argc, argv};
-  program_options(pg);
+  if (program_options(pg))
+  {
+    return 1;
+  }
 
-  // debug
-  fmt::print("{}\n", cl::wrap(String::repeat("-", Term::width()), {cl::fg_magenta}));
-  fmt::print("file: {}\n", pg.get("file"));
-  fmt::print("{}\n", cl::wrap(String::repeat("-", Term::width()), {cl::fg_magenta}));
+  if (pg.get<bool>("interpreter"))
+  {
+    // start in interpreter mode
+    return 0;
+  }
 
   if (! pg.find("file"))
   {
@@ -174,6 +180,11 @@ int main(int argc, char *argv[])
     fmt::print("Error: {}\n", "could not open file");
     return 1;
   }
+
+  // debug
+  fmt::print("{}\n", cl::wrap(String::repeat("-", Term::width()), {cl::fg_magenta}));
+  fmt::print("file: {}\n", pg.get("file"));
+  fmt::print("{}\n", cl::wrap(String::repeat("-", Term::width()), {cl::fg_magenta}));
 
   Flags flg;
   std::vector<Instruction> stk;
@@ -670,6 +681,10 @@ int main(int argc, char *argv[])
     {
       flg.dbg.all = v;
     }
+    else if (flag == "cmt")
+    {
+      flg.dbg.cmt = v;
+    }
     else if (flag == "map")
     {
       flg.dbg.map = v;
@@ -923,6 +938,46 @@ int main(int argc, char *argv[])
     // impl
 
     if (flg.cmp > 0)
+    {
+      flg.jmp.lbl = m[2];
+      flg.jmp.now = true;
+    }
+
+    return 0;
+  };
+
+  auto const ins_jump_greater_equal = [&](int line_num, std::string input, std::smatch m)
+  {
+    if (m.size() != 3)
+    {
+      // error
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    if (flg.cmp >= 0)
+    {
+      flg.jmp.lbl = m[2];
+      flg.jmp.now = true;
+    }
+
+    return 0;
+  };
+
+  auto const ins_jump_less_equal = [&](int line_num, std::string input, std::smatch m)
+  {
+    if (m.size() != 3)
+    {
+      // error
+      print_error(line_num, input, "invalid/missing arguments");
+      return 1;
+    }
+
+    // impl
+
+    if (flg.cmp <= 0)
     {
       flg.jmp.lbl = m[2];
       flg.jmp.now = true;
@@ -1192,13 +1247,13 @@ int main(int argc, char *argv[])
 
     {"^\\s*(cmp)\\s+([0-9a-zA-z]+)\\s+([0-9a-zA-Z]+)$", ins_compare},
 
-    // TODO jge
-    // TODO jle
     {"^\\s*(jmp)\\s+([0-9a-zA-z]+)$", ins_jump},
     {"^\\s*(jeq)\\s+([0-9a-zA-z]+)$", ins_jump_equal},
     {"^\\s*(jne)\\s+([0-9a-zA-z]+)$", ins_jump_not_equal},
     {"^\\s*(jlt)\\s+([0-9a-zA-z]+)$", ins_jump_less_then},
     {"^\\s*(jgt)\\s+([0-9a-zA-z]+)$", ins_jump_greater_then},
+    {"^\\s*(jge)\\s+([0-9a-zA-z]+)$", ins_jump_greater_equal},
+    {"^\\s*(jle)\\s+([0-9a-zA-z]+)$", ins_jump_less_equal},
 
     {"^\\s*(pop)\\s+([0-9a-zA-z]+)$", ins_pop},
     {"^\\s*(psh)\\s+([0-9a-zA-z]+)$", ins_push},
@@ -1222,6 +1277,9 @@ int main(int argc, char *argv[])
     {"^\\s*(dbg)\\s+([a-z]+)\\s([a-z]+)$", ins_debug},
     {"^\\s*(slp)\\s+([0-9a-zA-Z]+)$", ins_sleep},
     {"^\\s*(ext)\\s+([0-9a-zA-Z]+)$", ins_exit},
+
+    // TODO should comments be handled here instead
+    // {"^\\s*(#)(.*)$", ins_comment},
   };
 
   int line_num {0};
@@ -1238,7 +1296,6 @@ int main(int argc, char *argv[])
     // handle returns
     if (flg.ret.now)
     {
-      // fmt::print("return: {}\n", flg.ret.lne);
       ifile.seekg(lines[flg.ret.lne]);
       line_num = flg.ret.lne;
       flg.ret.now = false;
@@ -1303,15 +1360,19 @@ int main(int argc, char *argv[])
     }
 
     // handle comment
-    if (input.at(0) == '#')
     {
-      // debug
-      if (flg.dbg.all || flg.dbg.rgx)
+      auto s = input.find_first_not_of(" ");
+      if (s != std::string::npos)
       {
-        fmt::print("comment: [{}]: {}\n", line_num, input);
+        if (input.at(s) == '#')
+        {
+          if (flg.dbg.all || flg.dbg.cmt)
+          {
+            fmt::print("comment: [{}]: {}\n", line_num, input);
+          }
+          continue;
+        }
       }
-
-      continue;
     }
 
     // handle instruction
