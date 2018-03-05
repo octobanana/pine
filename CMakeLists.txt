@@ -1,6 +1,6 @@
-cmake_minimum_required (VERSION 3.8 FATAL_ERROR)
+cmake_minimum_required (VERSION 3.5 FATAL_ERROR)
 
-set (TARGET "app")
+set (TARGET "pine")
 project (${TARGET})
 
 # set (CMAKE_CXX_COMPILER "clang++")
@@ -29,7 +29,7 @@ include_directories(
 
 set (SOURCES
   src/main.cc
-  src/util/string.cc
+  src/pine.cc
 )
 
 set (HEADERS
@@ -43,7 +43,6 @@ add_executable (
 
 target_link_libraries (
   ${TARGET}
-  fmt
 )
 
 install (TARGETS ${TARGET} DESTINATION "$ENV{HOME}/bin")
