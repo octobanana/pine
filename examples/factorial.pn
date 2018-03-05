@@ -1,0 +1,61 @@
+# Pine factorial
+# dbg lne on
+
+mov s 'done'
+mov ec 0
+
+lbl main
+  run input
+  run factorial
+  run print
+  run success
+
+lbl input
+  mov fac 0
+  mov zero 0
+  mov q 'factorial calculator'
+
+  prt q
+  ask fac
+  cmp fac zero
+  jle error
+  psh fac
+ret
+
+lbl factorial
+  mov inc 1
+  mov index 1
+  mov res 1
+  mov fac 0
+  pop fac
+
+  lbl loop
+  cmp index fac
+  jgt end
+  mlt res index
+  add index inc
+  jmp loop
+  lbl end
+  psh res
+ret
+
+lbl print
+  mov res '> '
+  mov val ''
+  pop val
+
+  add res val
+  prt res
+ret
+
+lbl success
+  # prt s
+  ext ec
+
+lbl error
+  mov s 'error: num must be > 0'
+  mov ec 1
+
+  prt s
+  ext ec
+

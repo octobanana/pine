@@ -1,0 +1,21 @@
+# pine lang
+# slp test
+
+mov ec 0
+mov t 1000
+mov a 0
+mov b 1
+mov c 3
+
+lbl main
+  jmp loop
+  lbl 1
+  ext ec
+
+lbl loop
+  prt a
+  slp t
+  add a b
+  cmp a c
+  jlt loop
+  jmp 1

@@ -1,0 +1,49 @@
+# pine lang
+
+mov ec 0
+
+lbl main
+  run mlt
+  run div
+  run mod
+  ext ec
+
+lbl mlt
+  mov a 8
+  psh a
+  mov b 0
+  pop b
+  mlt a b
+  psh a
+  run print
+  clr a
+  clr b
+ret
+
+lbl div
+  mov a 8
+  mov b 4
+  div a b
+  psh a
+  run print
+  clr a
+  clr b
+ret
+
+lbl mod
+  mov a 32
+  mov b 7
+  mod a b
+  psh a
+  run print
+  clr a
+  clr b
+ret
+
+lbl print
+  mov s 0
+  pop s
+  prt s
+  clr s
+ret
+

@@ -1,0 +1,33 @@
+# pine lang
+
+mov ec 0
+
+lbl m0
+  jmp mlt
+  lbl m1
+  jmp div
+  lbl m2
+  jmp mod
+  lbl m3
+  ext ec
+
+lbl mlt
+  mov a 8
+  mov b 4
+  mlt a b
+  prt a
+  jmp m1
+
+lbl div
+  mov a 8
+  mov b 4
+  div a b
+  prt a
+  jmp m2
+
+lbl mod
+  mov a 32
+  mov b 7
+  mod a b
+  prt a
+  jmp m3
