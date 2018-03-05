@@ -1,0 +1,5 @@
+# Hello, Pine!
+mov str 'Hello, Pine!'
+prt str
+mov ec 0
+ext ec
